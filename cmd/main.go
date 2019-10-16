@@ -13,8 +13,8 @@ import (
 
         log "github.com/sirupsen/logrus"
         "github.com/spf13/cobra"
-	"github.com/thkukuk/mirror-registry/pkg/registry"
-	"github.com/thkukuk/mirror-registry/pkg/repoutils"
+	"github.com/genuinetools/reg/registry"
+	"github.com/genuinetools/reg/repoutils"
 )
 var (
         Version = "unreleased"
