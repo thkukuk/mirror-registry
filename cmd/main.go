@@ -3,12 +3,15 @@ package main
 import (
         "os"
 	"fmt"
-	"sort"
-        "encoding/json"
+	"strings"
+	"context"
+	// "sort"
+        // "encoding/json"
 
         log "github.com/sirupsen/logrus"
         "github.com/spf13/cobra"
-	"github.com/thkukuk/regmirror/pkg/registry"
+	"github.com/thkukuk/mirror-registry/pkg/registry"
+	"github.com/thkukuk/mirror-registry/pkg/repoutils"
 )
 var (
         Version = "unreleased"
@@ -43,43 +46,44 @@ func main() {
         os.Exit(0)
 }
 
-func createRegistryClient(domain string) (*registry.Registry, error) {
+func createRegistryClient(registryName string) (*registry.Registry, error) {
 
-/*       auth, err := repoutils.GetAuthConfig(username, password)
+	auth, err := repoutils.GetAuthConfig(username, password, registryName)
         if err != nil {
                 return nil, err
         }
 
         // Prevent non-ssl unless explicitly forced
-        if !forceNonSSL && strings.HasPrefix(auth.ServerAddress, "http:") {
-                return nil, fmt.Errorf("attempted to use insecure protocol! Use force-non-ssl option to force")
+        if !noSsl && strings.HasPrefix(auth.ServerAddress, "http:") {
+                return nil, fmt.Errorf("Attempted to use insecure protocol! Use no-ssl option.")
         }
 
+	ctx := defaultContext()
         // Create the registry client.
-        log.Infof("domain: %s", domain)
+        log.Infof("registry name: %s", registryName)
         log.Infof("server address: %s", auth.ServerAddress)
         return registry.New(ctx, auth, registry.Opt{
-                Domain:   domain,
+                Domain:   registryName,
                 Insecure: insecure,
                 Debug:    debug,
                 SkipPing: skipPing,
-                NonSSL:   forceNonSSL,
+                NonSSL:   noSsl,
                 Timeout:  timeout,
-        }) */
+        })
 	return nil, nil
 }
 
 
 func createConfig (cmd *cobra.Command, args []string) {
 
-        registry := args[0]
-	if len(registry) < 1 {
+        registryName := args[0]
+	if len(registryName) < 1 {
                 fmt.Errorf("pass the domain of the registry")
 		os.Exit(1)
         }
 
 	// Create the registry client.
-        reg, err := createRegistryClient(registry)
+        reg, err := createRegistryClient(registryName)
         if err != nil {
                 fmt.Errorf("Error connecting to registry: %s\n",
 			err.Error())
@@ -142,6 +146,9 @@ func createConfig (cmd *cobra.Command, args []string) {
         }
 
         w.Flush() */
+}
 
-        return nil
+func defaultContext() context.Context {
+	ctx := context.WithValue(context.Background(), "program.Name", "mirror-registry")
+	return context.WithValue(ctx, "program.Version", Version)
 }
