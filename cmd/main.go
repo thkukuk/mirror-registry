@@ -9,7 +9,6 @@ import (
 	"sort"
         "encoding/json"
 	"sync"
-	"text/tabwriter"
 
         log "github.com/sirupsen/logrus"
         "github.com/spf13/cobra"
@@ -66,8 +65,6 @@ func createRegistryClient(ctx context.Context, registryName string) (*registry.R
         }
 
         // Create the registry client.
-        log.Infof("registry name: %s", registryName)
-        log.Infof("server address: %s", auth.ServerAddress)
         return registry.New(ctx, auth, registry.Opt{
                 Domain:   registryName,
                 Insecure: insecure,
@@ -76,7 +73,6 @@ func createRegistryClient(ctx context.Context, registryName string) (*registry.R
                 NonSSL:   noSsl,
                 Timeout:  timeout,
         })
-	return nil, nil
 }
 
 
@@ -84,7 +80,7 @@ func createConfig (cmd *cobra.Command, args []string) {
 
         registryName := args[0]
 	if len(registryName) < 1 {
-                fmt.Errorf("pass the domain of the registry")
+                fmt.Fprintf(os.Stderr, "pass the domain of the registry\n")
 		os.Exit(1)
         }
 
@@ -92,7 +88,7 @@ func createConfig (cmd *cobra.Command, args []string) {
 	// Create the registry client.
         reg, err := createRegistryClient(ctx, registryName)
         if err != nil {
-                fmt.Errorf("Error connecting to registry: %s\n",
+                fmt.Fprintf(os.Stderr, "Error connecting to registry: %s\n",
 			err.Error())
 		os.Exit(1)
         }
@@ -101,10 +97,10 @@ func createConfig (cmd *cobra.Command, args []string) {
         repos, err := reg.Catalog(ctx, "")
         if err != nil {
                 if _, ok := err.(*json.SyntaxError); ok {
-                        fmt.Errorf("domain %s is not a valid registry",
+                        fmt.Fprintf(os.Stderr, "domain %s is not a valid registry\n",
 				reg.Domain)
                 } else {
-			fmt.Errorf("Error reading catalog: %s\n",
+			fmt.Fprintf(os.Stderr, "Error reading catalog: %s\n",
 				err.Error())
 		}
 		os.Exit(1)
@@ -126,7 +122,7 @@ func createConfig (cmd *cobra.Command, args []string) {
                         // Get the tags.
                         tags, err := reg.Tags(ctx, repo)
                         if err != nil {
-                                fmt.Printf("Get tags of [%s] error: %s", repo, err)
+                                fmt.Fprintf(os.Stderr, "Get tags of [%s] error: %s\n", repo, err)
                         }
                         // Sort the tags
                         sort.Strings(tags)
@@ -141,18 +137,23 @@ func createConfig (cmd *cobra.Command, args []string) {
         }
         wg.Wait()
 
-        // Setup the tab writer.
-        w := tabwriter.NewWriter(os.Stdout, 20, 1, 3, ' ', 0)
-
-        // Print header.
-        fmt.Fprintln(w, "REPO\tTAGS")
-
         // Sort the repos.
         for _, repo := range repos {
-                w.Write([]byte(fmt.Sprintf("%s\t%s\n", repo, strings.Join(repoTags[repo], ", "))))
-        }
+		fmt.Printf("%s:\n", repo)
+		for _, tag := range repoTags[repo] {
+			fmt.Printf("  - %s\n", tag)
+			manifest, err := reg.ManifestList(ctx, repo, tag)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, err.Error())
+			}
+			b, err := json.MarshalIndent(manifest, " ", "  ")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, err.Error())
+			}
 
-        w.Flush()
+			fmt.Println(string(b))
+		}
+        }
 }
 
 func defaultContext() context.Context {
