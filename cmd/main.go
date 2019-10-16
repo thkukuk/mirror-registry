@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"strings"
 	"context"
-	// "sort"
-        // "encoding/json"
+	"time"
+	"sort"
+        "encoding/json"
+	"sync"
+	"text/tabwriter"
 
         log "github.com/sirupsen/logrus"
         "github.com/spf13/cobra"
@@ -17,7 +20,9 @@ var (
         Version = "unreleased"
 	insecure = false
 	noSsl = false
+	noPing = false
 	debug = false
+	timeout time.Duration
 	username string
 	password string
 )
@@ -36,6 +41,8 @@ func main() {
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "enable debug output")
 	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", false, "do not verify tls certificates")
 	rootCmd.PersistentFlags().BoolVarP(&noSsl, "no-ssl", "n", false, "force allow non-ssl")
+	rootCmd.PersistentFlags().BoolVar(&noSsl, "no-ping", false, "Don't ping registry")
+	        rootCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", time.Minute, "timeout for http requests")
 	rootCmd.PersistentFlags().StringVarP(&username, "username", "u", "", "username for the registry")
 	rootCmd.PersistentFlags().StringVarP(&password, "password", "p", "", "password for the registry")
 
@@ -46,7 +53,7 @@ func main() {
         os.Exit(0)
 }
 
-func createRegistryClient(registryName string) (*registry.Registry, error) {
+func createRegistryClient(ctx context.Context, registryName string) (*registry.Registry, error) {
 
 	auth, err := repoutils.GetAuthConfig(username, password, registryName)
         if err != nil {
@@ -58,7 +65,6 @@ func createRegistryClient(registryName string) (*registry.Registry, error) {
                 return nil, fmt.Errorf("Attempted to use insecure protocol! Use no-ssl option.")
         }
 
-	ctx := defaultContext()
         // Create the registry client.
         log.Infof("registry name: %s", registryName)
         log.Infof("server address: %s", auth.ServerAddress)
@@ -66,7 +72,7 @@ func createRegistryClient(registryName string) (*registry.Registry, error) {
                 Domain:   registryName,
                 Insecure: insecure,
                 Debug:    debug,
-                SkipPing: skipPing,
+                SkipPing: noPing,
                 NonSSL:   noSsl,
                 Timeout:  timeout,
         })
@@ -82,14 +88,15 @@ func createConfig (cmd *cobra.Command, args []string) {
 		os.Exit(1)
         }
 
+	ctx := defaultContext()
 	// Create the registry client.
-        reg, err := createRegistryClient(registryName)
+        reg, err := createRegistryClient(ctx, registryName)
         if err != nil {
                 fmt.Errorf("Error connecting to registry: %s\n",
 			err.Error())
 		os.Exit(1)
         }
-	/*
+
         // Get the repositories via catalog.
         repos, err := reg.Catalog(ctx, "")
         if err != nil {
@@ -145,7 +152,7 @@ func createConfig (cmd *cobra.Command, args []string) {
                 w.Write([]byte(fmt.Sprintf("%s\t%s\n", repo, strings.Join(repoTags[repo], ", "))))
         }
 
-        w.Flush() */
+        w.Flush()
 }
 
 func defaultContext() context.Context {
