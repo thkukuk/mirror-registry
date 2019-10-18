@@ -5,6 +5,7 @@ go 1.12
 require (
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect
 	github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973 // indirect
+	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/docker-ce v0.0.0-20180924210327-f53bd8bb8e43 // indirect
 	github.com/docker/go-metrics v0.0.0-20180209012529-399ea8c73916 // indirect
 	github.com/genuinetools/reg v0.16.1-0.20190916203644-f180c93a3959

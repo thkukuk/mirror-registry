@@ -9,11 +9,15 @@ import (
 	"sort"
         "encoding/json"
 	"sync"
+	"runtime"
+	"regexp"
+	"bufio"
 
         log "github.com/sirupsen/logrus"
         "github.com/spf13/cobra"
 	"github.com/genuinetools/reg/registry"
 	"github.com/genuinetools/reg/repoutils"
+        "github.com/docker/distribution/manifest/manifestlist"
 )
 var (
         Version = "unreleased"
@@ -26,14 +30,31 @@ var (
 	password string
 )
 
+type PlatformManifest struct {
+        architecture string `json:"architecture"`
+        os string `json:"os"`
+}
+
+type ManifestResponse struct {
+        MediaType string `json:"mediaType"`
+        Size int `json:"size"`
+        Digest string `json:"digest"`
+        Platform PlatformManifest `json:"platform"`
+}
+
+type ManifestListResponse struct {
+        SchemaVersion int `json:"schemaVersion"`
+        MediaType string `json:"mediaType"`
+        Manifests []ManifestResponse `json:"manifests"`
+}
 
 func main() {
         rootCmd := &cobra.Command{
-                Use:   "mirror-registry",
+                Use:   "mirror-registry [regexp]",
                 Short: "Container registry mirror tool",
 		Long: "Mirror-registry will analyse a remote registry and create a yaml file with all containers and tags matching a regex to sync with skopeo to a private registry.",
 		Run: createConfig,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MinimumNArgs(1),
 	}
         rootCmd.Version = Version
 
@@ -83,6 +104,15 @@ func createConfig (cmd *cobra.Command, args []string) {
                 fmt.Fprintf(os.Stderr, "pass the domain of the registry\n")
 		os.Exit(1)
         }
+	regex := ".*"
+	if len(args) > 1 {
+		regex = args[1]
+	}
+	r, err := regexp.Compile(regex)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error compiling regexp (%s): %s\n", regex, err.Error())
+		os.Exit(1)
+	}
 
 	ctx := defaultContext()
 	// Create the registry client.
@@ -93,7 +123,10 @@ func createConfig (cmd *cobra.Command, args []string) {
 		os.Exit(1)
         }
 
+
+
         // Get the repositories via catalog.
+	fmt.Printf("Get repositories for %s\n", reg.Domain)
         repos, err := reg.Catalog(ctx, "")
         if err != nil {
                 if _, ok := err.(*json.SyntaxError); ok {
@@ -107,8 +140,6 @@ func createConfig (cmd *cobra.Command, args []string) {
         }
 
         sort.Strings(repos)
-
-        fmt.Printf("Repositories for %s\n", reg.Domain)
 
         var (
                 l        sync.Mutex
@@ -137,23 +168,73 @@ func createConfig (cmd *cobra.Command, args []string) {
         }
         wg.Wait()
 
-        // Sort the repos.
-        for _, repo := range repos {
-		fmt.Printf("%s:\n", repo)
-		for _, tag := range repoTags[repo] {
-			fmt.Printf("  - %s\n", tag)
-			manifest, err := reg.ManifestList(ctx, repo, tag)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, err.Error())
-			}
-			b, err := json.MarshalIndent(manifest, " ", "  ")
-			if err != nil {
-				fmt.Fprintf(os.Stderr, err.Error())
-			}
+	f, err := os.Create("skopeo.yml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Cannot create skopeo.yml: %s\n", err.Error())
+		os.Exit(1)
+	}
+	defer f.Close()
 
-			fmt.Println(string(b))
+	w := bufio.NewWriter(f)
+
+	fmt.Fprintf(w, "%s:\n", reg.Domain)
+	if len(username) > 0 && len(password) > 0 {
+		fmt.Fprintf(w, "  credentials:\n")
+		fmt.Fprintf(w, "    username: %s", username)
+		fmt.Fprintf(w, "    password: %s", password)
+	}
+	if insecure {
+		fmt.Fprintf(w, "  tls-verify: false\n")
+	} else {
+		fmt.Fprintf(w, "  tls-verify: true\n")
+	}
+	fmt.Fprintf(w, "  images:\n")
+
+        for _, repo := range repos {
+		if !r.MatchString(repo) {
+			continue
+		}
+
+		print_repo := true;
+		for _, tag := range repoTags[repo] {
+			ml, err := reg.ManifestList(ctx, repo, tag)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, err.Error())
+				os.Exit(1)
+			}
+			if (ml.Versioned.SchemaVersion != 2 && strings.Compare(ml.Versioned.MediaType,
+				manifestlist.MediaTypeManifestList) != 0) {
+					if ml.Versioned.SchemaVersion == 0 {
+						_, err := reg.Manifest(ctx, repo, tag)
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "%s:%s: - %s\n",
+								repo, tag, err.Error())
+							continue;
+						}
+						if print_repo {
+							fmt.Fprintf(w, "    %s:\n", repo)
+							print_repo = false
+						}
+						fmt.Fprintf(w, "      - %s\n", tag);
+						continue
+					}
+					fmt.Printf("%s:%s - ignoring, wrong schema vesion or media type\n",
+						repo, tag)
+					continue
+			}
+			for _, platform := range ml.Manifests {
+				if strings.Compare (platform.Platform.Architecture, runtime.GOARCH) == 0 {
+					if print_repo {
+						fmt.Fprintf(w, "    %s:\n", repo)
+						print_repo = false
+					}
+					fmt.Fprintf(w, "      - %s\n", tag)
+				}
+			}
 		}
         }
+	w.Flush()
+	f.Sync()
 }
 
 func defaultContext() context.Context {
