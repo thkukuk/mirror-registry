@@ -18,13 +18,15 @@ import (
 	"github.com/genuinetools/reg/registry"
 	"github.com/genuinetools/reg/repoutils"
         "github.com/docker/distribution/manifest/manifestlist"
+	"github.com/docker/distribution/manifest/schema2"
 )
+
 var (
         Version = "unreleased"
-	insecure = false
-	noSsl = false
-	noPing = false
-	debug = false
+	insecure bool
+	noSsl bool
+	noPing bool
+	debug bool
 	timeout time.Duration
 	username string
 	password string
@@ -202,25 +204,26 @@ func createConfig (cmd *cobra.Command, args []string) {
 				fmt.Fprintf(os.Stderr, err.Error())
 				os.Exit(1)
 			}
-			if (ml.Versioned.SchemaVersion != 2 && strings.Compare(ml.Versioned.MediaType,
-				manifestlist.MediaTypeManifestList) != 0) {
-					if ml.Versioned.SchemaVersion == 0 {
-						_, err := reg.Manifest(ctx, repo, tag)
-						if err != nil {
-							fmt.Fprintf(os.Stderr, "%s:%s: - %s\n",
-								repo, tag, err.Error())
-							continue;
-						}
-						if print_repo {
-							fmt.Fprintf(w, "    %s:\n", repo)
-							print_repo = false
-						}
-						fmt.Fprintf(w, "      - %s\n", tag);
-						continue
-					}
+			if (ml.Versioned.SchemaVersion != 2 || strings.Compare(ml.Versioned.MediaType, manifestlist.MediaTypeManifestList) != 0) {
+				m, err := reg.ManifestV2(ctx, repo, tag)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%s:%s: - %s\n",
+					 	repo, tag, err.Error())
+					continue;
+				}
+				if (m.Versioned.SchemaVersion != 2 ||
+					strings.Compare(m.Versioned.MediaType, schema2.MediaTypeManifest) != 0) {
 					fmt.Printf("%s:%s - ignoring, wrong schema vesion or media type\n",
 						repo, tag)
+					fmt.Printf("%s:%s - %v\n", repo, tag, m)
 					continue
+				}
+				if print_repo {
+					fmt.Fprintf(w, "    %s:\n", repo)
+					print_repo = false
+				}
+				fmt.Fprintf(w, "      - %s\n", tag);
+				continue
 			}
 			for _, platform := range ml.Manifests {
 				if strings.Compare (platform.Platform.Architecture, runtime.GOARCH) == 0 {
