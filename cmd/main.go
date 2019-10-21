@@ -32,6 +32,7 @@ var (
 	timeout = time.Minute
 	username string
 	password string
+	output = "skopeo.yaml"
 )
 
 type PlatformManifest struct {
@@ -56,7 +57,7 @@ func main() {
         rootCmd := &cobra.Command{
                 Use:   "mirror-registry registry [regexp]",
                 Short: "Container registry mirror tool",
-		Long: "Mirror-registry will analyse a remote registry and create a yaml file with all containers and tags matching a regex to sync with skopeo to a private registry.",
+		Long: "Mirror-registry will analyse a remote registry and create a yaml file with all containers and tags matching a regex to sync with skopeo to a private registry. While this tool understands the architecture flag for containers, skopeo does not really use this information yet. If a repository contains multi-arch containers, it will fail if there is no container for the architecture it is running on, else it will use the architecture which it is running on.\n\nTo create a yaml file for skopeo, call:\n  mirror-registry registry.example.com [regexp]\nThe output file should be used with skopeo:\n  skopeo sync --scoped --src yaml --dest docker skopeo.yml private.docker.registry\n\nskopeo 0.1.39 with the sync patch is required.",
 		Run: createConfig,
 		Args: cobra.MinimumNArgs(1),
 	}
@@ -64,6 +65,7 @@ func main() {
 
 	rootCmd.PersistentFlags().StringVarP(&arch, "arch", "a", runtime.GOARCH, "architecture for which the container should be copied, can create poblems with skopeo and multi-arch container images")
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", debug, "enable debug output")
+	rootCmd.PersistentFlags().StringVarP(&output, "out", "o", output, "In which file the config yaml for skopeo should be written")
 	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", insecure, "do not verify tls certificates")
 	rootCmd.PersistentFlags().BoolVarP(&noSsl, "no-ssl", "n", noSsl, "force allow non-ssl")
 	rootCmd.PersistentFlags().BoolVar(&noPing, "no-ping", noPing, "Don't ping registry")
@@ -175,9 +177,9 @@ func createConfig (cmd *cobra.Command, args []string) {
         }
 	wg.Wait()
 
-	f, err := os.Create("skopeo.yml")
+	f, err := os.Create(output)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot create skopeo.yml: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "Cannot create %s: %s\n", output, err.Error())
 		os.Exit(1)
 	}
 	defer f.Close()
