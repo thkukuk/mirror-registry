@@ -61,13 +61,13 @@ func Compare(a, b string) int {
 		length = len1
 	}
 
-	for i:= 0;i<length;i++ {
+	for i:= 0; i < length; i++ {
 		if i < len1 && i < len2 {
 			if v1[i] == v2[i] {
 				continue
 			}
 		}
-		r = 0
+		r = -1
 		if i < len1 {
 			if number, err := strconv.Atoi(v1[i]); err == nil {
 				r = number
@@ -77,7 +77,7 @@ func Compare(a, b string) int {
 			}
 		}
 
-		l = 0
+		l = -1
 		if i < len2 {
 			if number, err := strconv.Atoi(v2[i]); err == nil {
 				l = number
