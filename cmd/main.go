@@ -20,6 +20,7 @@ import (
 	"github.com/genuinetools/reg/repoutils"
         "github.com/docker/distribution/manifest/manifestlist"
 	"github.com/docker/distribution/manifest/schema2"
+	"github.com/thkukuk/mirror-registry/pkg/verscmp"
 )
 
 var (
@@ -29,6 +30,7 @@ var (
 	noSsl = false
 	noPing = false
 	debug = false
+	minimize = false
 	timeout = time.Minute
 	username string
 	password string
@@ -69,6 +71,7 @@ func main() {
 	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", insecure, "do not verify tls certificates")
 	rootCmd.PersistentFlags().BoolVarP(&noSsl, "no-ssl", "n", noSsl, "force allow non-ssl")
 	rootCmd.PersistentFlags().BoolVar(&noPing, "no-ping", noPing, "Don't ping registry")
+	rootCmd.PersistentFlags().BoolVarP(&minimize, "minimize", "m", minimize, "Try to mirror only newest tags")
 	rootCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", timeout, "timeout for http requests")
 	rootCmd.PersistentFlags().StringVarP(&username, "username", "u", "", "username for the registry")
 	rootCmd.PersistentFlags().StringVarP(&password, "password", "p", "", "password for the registry")
@@ -165,7 +168,11 @@ func createConfig (cmd *cobra.Command, args []string) {
 					fmt.Fprintf(os.Stderr, "Get tags of [%s] error: %s\n", repo, err)
 				}
 				// Sort the tags
-				sort.Strings(tags)
+				// sort.Strings(tags)
+				sort.Slice(tags, func(i, j int) bool {
+					return verscmp.Compare(tags[i], tags[j]) == -1
+				})
+
 
 				// Lock on the write to the map.
 				l.Lock()
@@ -203,7 +210,7 @@ func createConfig (cmd *cobra.Command, args []string) {
         wg.Add(len(repoTags))
         for repo := range repoTags {
                 go func(repo string) {
-			print_repo := []string{}
+			print_tags := []string{}
 			for _, tag := range repoTags[repo] {
 				ml, err := reg.ManifestList(ctx, repo, tag)
 				if err != nil {
@@ -219,7 +226,7 @@ func createConfig (cmd *cobra.Command, args []string) {
 					}
 					if (m.Versioned.SchemaVersion != 2 ||
 						strings.Compare(m.Versioned.MediaType, schema2.MediaTypeManifest) != 0) {
-						fmt.Printf("%s:%s - ignoring, wrong schema vesion or media type\n",
+						fmt.Printf("%s:%s - ignoring, wrong schema version or media type\n",
 							repo, tag)
 						continue
 					}
@@ -248,28 +255,63 @@ func createConfig (cmd *cobra.Command, args []string) {
 							continue
 						}
 					}
-					print_repo = append(print_repo, tag)
+					print_tags = append(print_tags, tag)
 					continue
 				}
 				for _, platform := range ml.Manifests {
 					if strings.Compare (platform.Platform.Architecture, arch) == 0 {
-						print_repo = append(print_repo, tag)
+						print_tags = append(print_tags, tag)
 					}
 				}
 			}
-			if len(print_repo) > 0 {
-				// Lock on write to file
-				l.Lock()
-				fmt.Fprintf(w, "    %s:\n", repo)
-				for _, tag := range print_repo {
-					fmt.Fprintf(w, "      - %s\n", tag);
+			if len(print_tags) > 0 && minimize {
+				min_tags := []string{}
+				number_tags := len(print_tags)
+				for idx := 0; idx < number_tags; idx++ {
+					// the first and last tag needs to be added
+					if (idx+1) == number_tags || idx == 0 {
+						min_tags = append(min_tags, print_tags[idx])
+					} else {
+						// check if a tag is the prefix of the following tag.
+						// In this case, add it.
+						if strings.HasPrefix(print_tags[idx+1], print_tags[idx]) {
+							min_tags = append(min_tags, print_tags[idx])
+						} else {
+							// No prefix anymore of the following tag, check if the last
+							// tag is a prefix of the following ones.
+							i := idx
+							for i = idx; i < number_tags; i++ {
+								if !strings.HasPrefix(print_tags[i], print_tags[idx - 1]) {
+									break
+								}
+							}
+							if i != idx {
+								i--
+								idx = i;
+							}
+							min_tags = append(min_tags, print_tags[idx])
+							}
+					}
 				}
-				l.Unlock()
+				print_tags = min_tags
 			}
+			// Lock on write to file
+			l.Lock()
+			repoTags[repo] = print_tags;
+			l.Unlock()
 			wg.Done()
 		}(repo)
 	}
 	wg.Wait()
+
+        for repo := range repoTags {
+		if len(repoTags[repo]) > 0 {
+			fmt.Fprintf(w, "    %s:\n", repo)
+			for _, tag := range repoTags[repo] {
+				fmt.Fprintf(w, "      - %s\n", tag);
+			}
+		}
+	}
 	w.Flush()
 	f.Sync()
 }
