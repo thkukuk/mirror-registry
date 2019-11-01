@@ -26,7 +26,7 @@ build: ## Build the binary files
 	$(GO) build -v -o $(MIRRORREG_BIN) $(USE_VENDOR) $(LOCAL_LDFLAGS) ./cmd
 
 clean: ## Remove previous builds
-	@rm -f $(KUBICD_BIN) $(KUBICCTL_BIN) $(API_GO)
+	@rm -f $(MIRRORREG_BIN)
 
 help: ## Display this help screen
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -34,13 +34,12 @@ help: ## Display this help screen
 
 .PHONY: release
 release: ## create release package from git
-	git clone https://github.com/thkukuk/kubic-control
-	mv kubic-control kubic-control-$(VERSION)
-	sed -i -e 's|USE_VENDOR =|USE_VENDOR = -mod vendor|g' kubic-control-$(VERSION)/Makefile
-	make -C kubic-control-$(VERSION) api
-	make -C kubic-control-$(VERSION) vendor
-	tar cJf kubic-control-$(VERSION).tar.xz kubic-control-$(VERSION)
-	rm -rf kubic-control-$(VERSION)
+	git clone https://github.com/thkukuk/mirror-registry
+	mv mirror-registry mirror-registry-$(VERSION)
+	sed -i -e 's|USE_VENDOR =|USE_VENDOR = -mod vendor|g' mirror-registry-$(VERSION)/Makefile
+	make -C mirror-registry-$(VERSION) vendor
+	tar cJf mirror-registry-$(VERSION).tar.xz mirror-registry-$(VERSION)
+	rm -rf mirror-registry-$(VERSION)
 
 #MANPAGES_MD := $(wildcard docs/man/*.md)
 #MANPAGES    := $(MANPAGES_MD:%.md=%)
