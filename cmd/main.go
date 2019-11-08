@@ -31,6 +31,7 @@ var (
 	noPing = false
 	debug = false
 	minimize = false
+	newestOnly = false
 	timeout = time.Minute
 	username string
 	password string
@@ -69,9 +70,10 @@ func main() {
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", debug, "enable debug output")
 	rootCmd.PersistentFlags().StringVarP(&output, "out", "o", output, "In which file the config yaml for skopeo should be written")
 	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", insecure, "do not verify tls certificates")
-	rootCmd.PersistentFlags().BoolVarP(&noSsl, "no-ssl", "n", noSsl, "force allow non-ssl")
+	rootCmd.PersistentFlags().BoolVar(&noSsl, "no-ssl", noSsl, "force allow non-ssl")
 	rootCmd.PersistentFlags().BoolVar(&noPing, "no-ping", noPing, "Don't ping registry")
 	rootCmd.PersistentFlags().BoolVarP(&minimize, "minimize", "m", minimize, "Try to mirror only newest tags")
+	rootCmd.PersistentFlags().BoolVarP(&newestOnly, "newest-only", "n", newestOnly, "Try to mirror only the newest image")
 	rootCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", timeout, "timeout for http requests")
 	rootCmd.PersistentFlags().StringVarP(&username, "username", "u", "", "username for the registry")
 	rootCmd.PersistentFlags().StringVarP(&password, "password", "p", "", "password for the registry")
@@ -168,11 +170,9 @@ func createConfig (cmd *cobra.Command, args []string) {
 					fmt.Fprintf(os.Stderr, "Get tags of [%s] error: %s\n", repo, err)
 				}
 				// Sort the tags
-				// sort.Strings(tags)
 				sort.Slice(tags, func(i, j int) bool {
 					return verscmp.Compare(tags[i], tags[j]) == -1
 				})
-
 
 				// Lock on the write to the map.
 				l.Lock()
@@ -294,6 +294,26 @@ func createConfig (cmd *cobra.Command, args []string) {
 					}
 				}
 				print_tags = min_tags
+			}
+			if len(print_tags) > 0 && newestOnly {
+				new_tags := []string{}
+				newest_idx := -1
+				for idx := len(print_tags) -1 ; idx >= 0; idx-- {
+					if print_tags[idx] == "latest" {
+						new_tags = append(new_tags, print_tags[idx])
+					} else if newest_idx == -1 {
+						new_tags = append(new_tags, print_tags[idx])
+						newest_idx = idx
+					} else if strings.HasPrefix(print_tags[newest_idx], print_tags[idx]) {
+						new_tags = append(new_tags, print_tags[idx])
+					}
+				}
+				print_tags = new_tags
+				// Sort the tags
+				sort.Slice(print_tags, func(i, j int) bool {
+					return verscmp.Compare(print_tags[i], print_tags[j]) == -1
+				})
+
 			}
 			// Lock on write to file
 			l.Lock()
