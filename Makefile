@@ -35,6 +35,7 @@ help: ## Display this help screen
 .PHONY: release
 release: ## create release package from git
 	git clone https://github.com/thkukuk/mirror-registry
+	rm -rf mirror-registry/.git*
 	mv mirror-registry mirror-registry-$(VERSION)
 	sed -i -e 's|USE_VENDOR =|USE_VENDOR = -mod vendor|g' mirror-registry-$(VERSION)/Makefile
 	make -C mirror-registry-$(VERSION) vendor
