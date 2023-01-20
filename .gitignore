@@ -2,3 +2,4 @@ bin
 vendor
 *~
 .swp
+mirror-registry-*.tar.*
